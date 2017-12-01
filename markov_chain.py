@@ -5,7 +5,7 @@ weatherCond = ["sunny", "cloudy", "rainy"]
 weatherProb = np.array([[0.6, 0.3, 0.1],
                         [0.2, 0.3, 0.5],
                         [0.4, 0.1, 0.5]])
-initialStateProb = [0.3, 0.6, 0.1]
+initialStateProb = [0.6, 0.3, 0.1]
 weatherProbConvert = np.array([])
 
 initialState = np.random.choice(a= len(initialStateProb), p=initialStateProb)
@@ -37,6 +37,7 @@ for i in range(100):
     initialState = weatherCond[initialState]
     print("Day %d: %s" % (i + 3, initialState))
 
-print("#0 appeared %s times" % zeroCount)
-print("#1 appeared %s times" % oneCount)
-print("#2 appeared %s times" % twoCount)
+print("Initial States: " + initialStateProb)
+print("Sunny appeared %s times" % zeroCount)
+print("Cloudy appeared %s times" % oneCount)
+print("Rainy appeared %s times" % twoCount)
