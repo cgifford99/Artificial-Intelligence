@@ -3,3 +3,4 @@ text_analysis.py
 parseData.txt
 BNC/
 BNC.zip
+pos_training.db

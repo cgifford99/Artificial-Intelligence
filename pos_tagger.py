@@ -3,30 +3,22 @@ import urllib.request
 import shutil
 import zipfile
 import sys
+import time
 import sqlite3
 from sqlite3 import Error
-# this works, but unless you have 1TB of RAM, it doesn't....don't try, I'm fixing it.....
 
-""" create database
-def dbConnect(dbFile):
-    try:
-        conn = sqlite3.connect(dbFile)
-        print(sqlite3.version)
-    except Error as e:
-        print(e)
-    finally:
-        conn.close()
-"""
+def dbInsert(c, tag, word):
+    c.execute("INSERT INTO pos_tags VALUES (?, ?);", (tag, word))
 
 def importCorpus(): # download corpus and set for training
-    with open("parseData.txt", "w", encoding="utf-8") as parseData:
-        if os.path.exists(corpusPath + "\\BNC.zip") != True:
+    # with open("parseData.txt", "w", encoding="utf-8") as parseData:
+        if not os.path.exists(corpusPath + "\\BNC.zip"):
             print("Downloading corpus...")
             with urllib.request.urlopen('http://ota.ox.ac.uk/text/2554.zip') as response, open("BNC.zip", "wb") as outputFile:
                 shutil.copyfileobj(response, outputFile)
         else:
-            print("Path exists. Will not download.")
-        if os.path.exists(corpusPath + "\\BNC") != True:
+            print("Corpus exists. Will not download.")
+        if not os.path.exists(corpusPath + "\\BNC"):
             print("Extracting corpus...")
             zipRef = zipfile.ZipFile(corpusPath + "\\BNC.zip", 'r')
             zipRef.extractall(corpusPath)
@@ -34,7 +26,7 @@ def importCorpus(): # download corpus and set for training
             os.rename(corpusPath + "\\2554", corpusPath + "\\BNC") # permission denied issues??
             print("Done!")
         else:
-            print("File extracted. Will not extract.")
+            print("Corpus already unzipped. Will not continue.")
 
         for i in range(len(os.listdir(docPath))):
             print("Parsing...")
@@ -45,18 +37,19 @@ def importCorpus(): # download corpus and set for training
 
                 for k in range (len(os.listdir("%s\\%s\\%s" % (docPath, folderOne, folderTwo)))):
                     finalFile = os.listdir("%s\\%s\\%s" % (docPath, folderOne, folderTwo))[k]
+                    conn.commit()
 
                     with open('%s\\%s\\%s\\%s' % (docPath, folderOne, folderTwo, finalFile), encoding="utf-8") as currentFile:
-                        parseData.write(finalFile + "\n")
+                        # parseData.write(finalFile + "\n")
                         print(finalFile)
-                        lines = 0
+                        # lines = 0
                         for line in currentFile:
-                            lines += 1
-                            parseData.write("%d\n" % lines)
-                            parseFile(line, parseData)
+                            # lines += 1
+                            # parseData.write("%d\n" % lines)
+                            parseFile(line)
 
 
-def parseFile(line, parseData):
+def parseFile(line):
     # use parsing techniques to extract POS tag and the words
     if line.find("<w ") == -1 or line.find("</w>") == -1:
         return
@@ -64,16 +57,48 @@ def parseFile(line, parseData):
         wordInfo = line[line.find("<w ") + 3:line.find("</w>")]
         pos = wordInfo[wordInfo.find("c5=") + 4:wordInfo.find(" ") - 1]
         word = wordInfo[wordInfo.find(">") + 1:]
-        line = line[:line.find("<w ")] + line[line.find("</w>")+4:]
-        parseFile(line, parseData)
+        dbInsert(c, pos, word)
+        line = line[:line.find("<w ")] + line[line.find("</w>") + 4:]
+        parseFile(line)
+
+def doesPathExist(path):
+    if not os.path.exists(path):
+        try:
+            print("Attempting to create path...")
+            os.mkdir(path)
+            print("Path %s created" % path)
+            doesPathExist(docPath)
+        except:
+            print("Error: Could not create path")
+            path = os.path.dirname(path)
+            doesPathExist(path)
+
 
 if __name__ == '__main__':
+    start = time.time()
     print("Setting default directories...")
+    # grabbing the username for more flexibility
     currentUser = os.environ.get('USERNAME')
+
     # if path doesn't exist, create it
     docPath = 'C:\\Users\\%s\\Documents\\artificial intelligence\\BNC\\download\\Texts' % currentUser
+    doesPathExist(docPath)
     corpusPath = 'C:\\Users\\%s\\Documents\\artificial intelligence' % currentUser
+    doesPathExist(corpusPath)
+    print("All paths exist!")
+    # recursion limit too low for some documents within corpus; will return error otherwise
     sys.setrecursionlimit(4000)
-    # dbConnect(corpusPath + "\\%s" % dbFile) yo future me, you're making a database to put words and their pos into. Cool. Have a good day
-    importCorpus()
-    print("Done!")
+
+    print("Creating database...")
+    global conn
+    try:
+        conn = sqlite3.connect(corpusPath + "\\pos_training.db")
+    except Error as e:
+        print(e)
+    finally:
+        c = conn.cursor()
+        c.execute('''CREATE TABLE if not exists pos_tags(tags, words)''')
+        importCorpus()
+        conn.close()
+        print("Done!")
+        print("--- time taken: %f seconds ---" % (time.time() - start))
