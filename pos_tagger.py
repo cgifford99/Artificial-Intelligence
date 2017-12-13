@@ -1,21 +1,19 @@
 import os
-import urllib.request
 import shutil
-import zipfile
+import sqlite3
 import sys
 import time
-import sqlite3
+import urllib.request
+import zipfile
 from sqlite3 import Error
 
 
-def dbInsert(c, tag, word):
-    c.execute("INSERT INTO pos_tags VALUES (?, ?);", (tag, word))
-
-
-def importCorpus(data):  # download corpus and set for training
+def importCorpus(data):
+    # download corpus and set for training
     if not os.path.exists(corpusPath + "\\BNC.zip"):
         print("Downloading corpus...")
-        with urllib.request.urlopen('http://ota.ox.ac.uk/text/2554.zip') as response, open("BNC.zip", "wb") as outputFile:
+        with urllib.request.urlopen('http://ota.ox.ac.uk/text/2554.zip') as response, open("BNC.zip",
+                                                                                           "wb") as outputFile:
             shutil.copyfileobj(response, outputFile)
     else:
         print("Corpus exists. Will not download.")
@@ -28,10 +26,10 @@ def importCorpus(data):  # download corpus and set for training
         print("Done!")
     else:
         print("Corpus previously unzipped. Will not continue.")
+    # Document/directory iteration and file parsing
     for i in range(len(os.listdir(docPath))):
         folderOne = os.listdir(docPath)[i]
         print("Parsing...", folderOne)
-        connPOS.commit()
 
         for j in range(len(os.listdir("%s\\%s" % (docPath, folderOne)))):
             folderTwo = os.listdir("%s\\%s" % (docPath, folderOne))[j]
@@ -39,15 +37,13 @@ def importCorpus(data):  # download corpus and set for training
             for k in range(len(os.listdir("%s\\%s\\%s" % (docPath, folderOne, folderTwo)))):
                 finalFile = os.listdir("%s\\%s\\%s" % (docPath, folderOne, folderTwo))[k]
 
-                with open('%s\\%s\\%s\\%s' % (docPath, folderOne, folderTwo, finalFile), encoding="utf-8") as currentFile:
-                    # lines = 1
-                    # print(finalFile)
+                with open('%s\\%s\\%s\\%s' % (docPath, folderOne, folderTwo, finalFile),
+                          encoding="utf-8") as currentFile:
                     for line in currentFile:
                         parseLine(line, data)
-                        # print(lines)
-                        # lines += 1
-
-"""    for k in range(len(os.listdir("%s\\%s\\%s" % (docPath, "a", "a1")))):
+    """
+    # Specified file parsing for debugging
+    for k in range(len(os.listdir("%s\\%s\\%s" % (docPath, "a", "a1")))):
         finalFile = os.listdir("%s\\%s\\%s" % (docPath, "a", "a1"))[k]
 
         with open('%s\\%s\\%s\\%s' % (docPath, "a", "a1", finalFile), encoding="utf-8") as currentFile:
@@ -55,20 +51,19 @@ def importCorpus(data):  # download corpus and set for training
             for line in currentFile:
                 parseLine(line, data)
                 # print(lines)
-"""
+    """
 
 
 def parseLine(line, data):
     # use parsing techniques to extract POS tag and the words
-    # print(line)
-    global wordNum
+    global previousPOS
     if line.find("<w ") == -1 or line.find("</w>") == -1:
         return
     else:
         wordInfo = line[line.find("<w ") + 3:line.find("</w>")]
-        pos = wordInfo[wordInfo.find("c5=") + 4:wordInfo.find(" ") - 1]
+        currentPOS = wordInfo[wordInfo.find("c5=") + 4:wordInfo.find(" ") - 1]
         word = wordInfo[wordInfo.find(">") + 1:]
-        if pos == '' or word == '':
+        if currentPOS == '' or word == '':
             if line.find("<w ") != -1:
                 line = line[:line.find("<w ")]
                 parseLine(line, data)
@@ -76,11 +71,26 @@ def parseLine(line, data):
                 line = line[:line.find("</w>")]
                 parseLine(line, data)
         else:
-            dbInsert(data, pos, word)
-            countWords(wordCounts, pos, word)
+            data.execute("INSERT INTO pos_tags VALUES (?, ?);", (currentPOS, word))
+            countData(wordPOSCounts, currentPOS, word)
+            countData(POSPOSCounts, currentPOS, previousPOS)
             line = line[:line.find("<w ")] + line[line.find("</w>") + 4:]
-            wordNum += 1
+            previousPOS = currentPOS
             parseLine(line, data)
+
+
+def countData(countList, pos, word):
+    if ' ' in word:
+        word = word[:word.find(' ')]
+    word = word.lower()
+    newData = "%s[%s]" % (pos, word)
+    if newData not in countList:
+        count = 1
+        countList[newData] = count
+    else:
+        newCount = countList[newData]
+        newCount += 1
+        countList[newData] = newCount
 
 
 def doesPathExist(path):
@@ -94,30 +104,6 @@ def doesPathExist(path):
             print("Error: Could not create path")
             path = os.path.dirname(path)
             doesPathExist(path)
-
-
-def countWords(countList, pos, word):
-    # select a word in pos_tags db
-    # if word not in count_words db
-        # insert into db
-    # if word in count_words db
-        # find row number of word
-        # find current value of word count
-        # +1 to current value
-    # output: "'s ",
-    # extra output: "n't ",
-    # create a list of counts, then input list into database
-    if ' ' in word:
-        word = word[:word.find(' ')]
-    word = word.lower()
-    newWord = "%s[%s]" % (pos, word)
-    if newWord not in countList:
-        count = 1
-        countList[newWord] = count
-    else:
-        newCount = countList[newWord]
-        newCount += 1
-        countList[newWord] = newCount
 
 
 if __name__ == '__main__':
@@ -142,19 +128,24 @@ if __name__ == '__main__':
     except Error as e:
         print(e)
     finally:
-        print("Database created successfully!")
         curPOS = connPOS.cursor()
         curPOS.execute('''CREATE TABLE if not exists pos_tags(tags, words)''')
-        # curPOS.execute('''CREATE TABLE if not exists counts(words, counts)''')
-        # curPOS.execute('''SELECT pos_tags.words, counts.words, counts.counts FROM counts ''')
-        # curPOS.execute('''BEGIN TRANSACTION''')
-        wordCounts = {}
-        wordNum = 0
+        curPOS.execute('''CREATE TABLE if not exists wordPOSCounts(pos[word], count)''')
+        curPOS.execute('''CREATE TABLE if not exists POSPOSCounts(pos[pos], count)''')
+        print("Database created successfully!")
+        wordPOSCounts = {}
+        POSPOSCounts = {}
+        previousPOS = ""
         importCorpus(curPOS)
-        print(wordNum)
-        # for data in range(len(posData)):
-        #    print(posData[data])
-        # curPOS.execute('''END TRANSACTION''')
+        for key in wordPOSCounts:
+            data = key
+            count = wordPOSCounts[key]
+            curPOS.execute('''INSERT INTO wordPOSCounts VALUES (?, ?)''', (data, count))
+        for key in POSPOSCounts:
+            data = key
+            count = POSPOSCounts[key]
+            curPOS.execute('''INSERT INTO POSPOSCounts VALUES (?, ?)''', (data, count))
+        connPOS.commit()
         connPOS.close()
         print("Done!")
         print("--- time taken: %f seconds ---" % (time.time() - start))
