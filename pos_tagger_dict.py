@@ -38,11 +38,10 @@ def importCorpus(data, files):  # download corpus and set for training
                 finalFile = os.listdir("%s\\%s\\%s" % (docPath, folderOne, folderTwo))[k]
 
                 with open('%s\\%s\\%s\\%s' % (docPath, folderOne, folderTwo, finalFile), encoding="utf-8") as currentFile:
-                    files += 1
                     # lines = 1
                     # print(finalFile)
-                    # for line in currentFile:
-                        # parseLine(line, data)
+                    for line in currentFile:
+                        parseLine(line, data)
                         # print(lines)
                         # lines += 1
 
@@ -108,7 +107,6 @@ if __name__ == '__main__':
     print("Setting default directories...")
     # grabbing the username for more flexibility
     currentUser = os.environ.get('USERNAME')
-
     # if path doesn't exist, create it
     docPath = 'C:\\Users\\%s\\Documents\\artificial intelligence\\BNC\\download\\Texts' % currentUser
     doesPathExist(docPath)
@@ -117,7 +115,6 @@ if __name__ == '__main__':
     print("All paths exist!")
     # recursion limit too low for some documents within corpus; will return error otherwise
     sys.setrecursionlimit(4000)
-    # print("Creating database...")
     posData = []
     files = 0
     importCorpus(posData, files)
