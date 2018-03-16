@@ -25,7 +25,6 @@ emissionProb = {}
 
 previousPOS = "START"
 
-
 def doesPathExist(path):
     if not os.path.exists(path):
         try:
@@ -88,22 +87,12 @@ def importCorpus():
         print("Corpus previously unzipped. Will not continue.")
 
 
-# parses corpus file-by-file, line-by-line
 def parseCorpus():
-    for dirOne in range(len(os.listdir(docPath))):
-        folderOne = os.listdir(docPath)[dirOne]
-        print("Parsing...", folderOne)
-
-        for dirTwo in range(len(os.listdir("%s\\%s" % (docPath, folderOne)))):
-            folderTwo = os.listdir("%s\\%s" % (docPath, folderOne))[dirTwo]
-
-            for dirThree in range(len(os.listdir("%s\\%s\\%s" % (docPath, folderOne, folderTwo)))):
-                finalFile = os.listdir("%s\\%s\\%s" % (docPath, folderOne, folderTwo))[dirThree]
-
-                with open('%s\\%s\\%s\\%s' % (docPath, folderOne, folderTwo, finalFile),
-                          encoding="utf-8") as currentFile:
-                    for line in currentFile:
-                        parseLine(line)
+    for dirPath, dirNames, fileNames in os.walk(docPath):
+        if not fileNames:
+            for fileName in fileNames:
+                with open(os.path.join(dirPath, fileName), encoding="utf-8") as file:
+                    for line in file: parseLine(line)
 
 # parses individual lines in the current document
 def parseLine(line):
@@ -204,7 +193,6 @@ if __name__ == '__main__':
         print("Database created successfully!")
         importCorpus()
         parseCorpus()
-        print("Data created")
 
         print("Generating transition probability matrix...")
         genTransitionProb(transitionProb, POSCounts)
@@ -217,9 +205,7 @@ if __name__ == '__main__':
         insertDB()
         connPOS.commit()
         connPOS.close()
+        print("Data created")
         timeTaken = time.time() - start
-        timeUnit = "seconds"
-        if timeTaken >= 60:
-            timeTaken /= 60
-            timeUnit = "minutes"
-        print("--- time taken: %f %s ---" % (timeTaken, timeUnit))
+        convertedTime = time.strftime("%H:%M:%S", time.gmtime(timeTaken))
+        print("--- Time taken: %f ---" % convertedTime)

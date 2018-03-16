@@ -1,16 +1,16 @@
 import os
 import time
+import re
 import sqlite3
-from sqlite3 import Error
 
 # username extraction (for flexibility)
 currentUser = os.environ.get('USERNAME')
 
 # corpus document location
-docPath = 'C:\\Users\\%s\\Documents\\artificial intelligence\\BNC\\download\\Texts' % currentUser
+docPath = 'C:\\Users\\%s\\PycharmProjects\\artificial intelligence\\BNC\\download\\Texts' % currentUser
 
 # planned corpus location
-corpusPath = 'C:\\Users\\%s\\Documents\\artificial intelligence' % currentUser
+corpusPath = 'C:\\Users\\%s\\PycharmProjects\\artificial intelligence' % currentUser
 
 # data dictionaries/arrays
 wordPOSCounts = {}
@@ -36,18 +36,22 @@ def reformatArr(array, dictionary):
 
 
 def viterbi():
-    global pathCellArray
-    global maxFuncArg
-    global cellProbArray
-    global pathProbArray
-    global finalCellProb
+    global pathCellArray; global maxFuncArg; global cellProbArray; global pathProbArray; global finalCellProb
+    matchNotFound = True
     for x in range(len(sentTagRange)):
         for y in range(len(sentTagRange[x])):
             formEmissionKey = "%s(%s)" % (sentTagRange[x][y], words[x])
             for emissionKey in emisProb:
                 if formEmissionKey in emissionKey:
                     finalProbTwo = emisProb[formEmissionKey]
-
+                    matchNotFound = True
+                    break
+                else:
+                    matchNotFound = False
+            if not matchNotFound:
+                print("I cannot recognize the word: %s" % words[x])
+                finalCellProb.append("UNC")
+                break
 
             if x == 0:
                 previousState = "start"
@@ -101,31 +105,34 @@ if __name__ == '__main__':
         emisProbArr = cur.fetchall()
         reformatArr(emisProbArr, emisProb)
 
-    currentSentence = input("Insert a sentence for part-of-speech tagging: ")
-    words = currentSentence.lower().split()
+    sentence = input("Insert a sentence for part-of-speech tagging: ")
+    words = re.findall(r"[\w']+|[!\"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~]", sentence)
 
     print("Calculating parts-of-speech....")
-    for iterator in range(len(words)):
+    for index in range(len(words)):
         for emissionKey in emisProb:
-            formWord = "(%s)" % words[iterator]
+            formWord = "(%s)" % words[index]
             if formWord in emissionKey:
                 emissionPOSKey = emissionKey[:emissionKey.find("(")]
                 wordTagRange.append(emissionPOSKey)
+        if not wordTagRange:
+            wordTagRange.append("UNC")
         sentTagRange.append(wordTagRange)
         wordTagRange = []
     previousState = "start"
-    print(sentTagRange)
     viterbi()
 
-    for a in range(len(finalCellProb)):
-        maxVal = max(finalCellProb[a])
-        maxIndex = finalCellProb[a].index(maxVal)
-        tagSeq.append(sentTagRange[a][maxIndex])
+    for index in range(len(finalCellProb)):
+        maxVal = max(finalCellProb[index])
+        maxIndex = finalCellProb[index].index(maxVal)
+        tagSeq.append(sentTagRange[index][maxIndex])
 
-    print(tagSeq)
+    tagSent = ''
+    for index in range(len(tagSeq)):
+        tagWord = "%s[%s] " % (words[index], tagSeq[index])
+        tagSent += tagWord
+    print(tagSent)
     timeTaken = time.time() - start
-    timeUnit = "seconds"
-    if timeTaken >= 60:
-        timeTaken /= 60
-        timeUnit = "minutes"
-    print("--- time taken: %f %s ---" % (timeTaken, timeUnit))
+    convertedTime = time.strftime("%H:%M:%S", time.gmtime(timeTaken))
+    print("--- Time taken: %s ---\n" % convertedTime)
+    input("Hit enter to close the window...")
