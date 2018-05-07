@@ -16,10 +16,10 @@ def cost(thetaOne):
 def hTheta(x, thetaOne, thetaZero):
     return thetaZero + (thetaOne*x)
 
-thetaZero = 0
+thetaZero = -20
 thetaOne = np.linspace(-100, 100, 100)
 
-element = [[1,2],[2,3],[3,4]]
+element = [[1,1],[2,2],[3,3],[4,4]]
 m = len(element)
 
 costFunc = []

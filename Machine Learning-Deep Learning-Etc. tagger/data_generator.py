@@ -3,7 +3,6 @@ import os
 import sys
 import csv
 
-
 class Data:
     currentUser = os.environ.get('USERNAME')
 
@@ -11,14 +10,14 @@ class Data:
     basePath = 'C:\\Users\\%s\\PycharmProjects\\artificial intelligence' % currentUser
     dataPath = 'C:\\Users\\%s\\PycharmProjects\\artificial intelligence\\datasets\\2554\\download\\texts' % currentUser
 
-    # trainFiles = ["A0A.xml", "A0B.xml", "A0C.xml", "A0D.xml", "A0E.xml", "A0F.xml", "A0G.xml", "A0H.xml", "A0J.xml",
-    #              "A0K.xml", "A0L.xml", "A0M.xml", "A0N.xml", "A0P.xml", "A0R.xml", "A0S.xml", "A0T.xml", "A0U.xml",
-    #              "A0V.xml", "A0W.xml", "A0X.xml", "A0Y.xml"]
-    trainFiles = ["A0A.xml", "A0B.xml", "A0C.xml", "A0D.xml"]
+    trainFiles = ["A0A.xml", "A0B.xml", "A0C.xml", "A0D.xml", "A0E.xml", "A0F.xml", "A0G.xml", "A0H.xml", "A0J.xml",
+                  "A0K.xml", "A0L.xml", "A0M.xml", "A0N.xml", "A0P.xml", "A0R.xml", "A0S.xml", "A0T.xml", "A0U.xml",
+                  "A0V.xml", "A0W.xml", "A0X.xml", "A0Y.xml"]
+    # trainFiles = ["A0A.xml", "A0B.xml", "A0C.xml", "A0D.xml"]
     trainName = 'training.csv'
 
-    # testFiles = ["A00.xml", "A01.xml", "A02.xml", "A03.xml", "A04.xml", "A05.xml", "A06.xml", "A07.xml", "A08.xml"]
-    testFiles = ["A00.xml"]
+    testFiles = ["A00.xml", "A01.xml", "A02.xml", "A03.xml", "A04.xml", "A05.xml", "A06.xml", "A07.xml", "A08.xml"]
+    # testFiles = ["A00.xml"]
     testName = 'testing.csv'
 
     parsedLine = []
@@ -48,37 +47,44 @@ class Data:
             return tf.keras.utils.get_file(fname="BNC", origin=url, extract=True,
                                            cache_dir=self.basePath)  # does this return proper pathname?
 
-    def parseCorpus(self, path, files, dataFile):
-        """
-        print("Parsing corpus....")
-        for dirPath, dirNames, fileNames in os.walk(path):
-            if fileNames:
-                for fileName in fileNames:
-        """
+    def getFiles(self, path, priorPaths):
+        trainFile = []
+        testFile = []
+        for i in range(len(priorPaths)):
+            for file in os.listdir(os.path.join(path, priorPaths[i][0], priorPaths[i])):
+                if file[2].isalpha():
+                    trainFile.append(file)
+                elif file[2].isdigit():
+                    testFile.append(file)
+
+        return trainFile, testFile
+
+    def parseCorpus(self, path, files, filePaths, dataFile):
         with open(os.path.join(self.basePath, dataFile), 'w+', newline='') as csvfile:
             _writer = csv.writer(csvfile)
             _writer.writerow(["featureTag-2", "featureTag-1", "featureTag1", "featureTag2", "labelTag"])
-            for fileName in files:
-                with open(os.path.join(path, "A", "A0", fileName), encoding="utf-8") as file:
-                    print(fileName)
-                    for line in file:
-                        self.parseLine(line)
-                        if self.parsedLine:
-                            for i in range(len(self.parsedLine)):
-                                if self.parsedLine[i][1] != "none":
+            for k in range(len(filePaths)):
+                for fileName in files:
+                    if int(fileName[1]) == k:
+                        with open(os.path.join(path, filePaths[k][0], filePaths[k], fileName), encoding="utf-8") as file:
+                            print(fileName)
+                            for line in file:
+                                self.parseLine(line)
+                                if self.parsedLine:
                                     self.parsedLine.append(["none", "none"])
                                     self.parsedLine.append(["none", "none"])
+                                    for i in range(len(self.parsedLine)):
+                                        if self.parsedLine[i][1] != "none":
+                                            currentTag = self.parsedLine[i][1]
+                                            futureOneTag = self.parsedLine[i + 1][1]
+                                            futureTwoTag = self.parsedLine[i + 2][1]
+                                            prevTwoTag = self.parsedLine[i - 2][1]
+                                            prevOneTag = self.parsedLine[i - 1][1]
 
-                                    currentTag = self.parsedLine[i][1]
-                                    futureOneTag = self.parsedLine[i + 1][1]
-                                    futureTwoTag = self.parsedLine[i + 2][1]
-                                    prevTwoTag = self.parsedLine[i - 2][1]
-                                    prevOneTag = self.parsedLine[i - 1][1]
+                                            features = [prevTwoTag, prevOneTag, futureOneTag, futureTwoTag, currentTag]
+                                            _writer.writerow(features)
 
-                                    features = [prevTwoTag, prevOneTag, futureOneTag, futureTwoTag, currentTag]
-                                    _writer.writerow(features)
-
-                            self.parsedLine = [["none", "none"], ["none", "none"]]
+                                    self.parsedLine = [["none", "none"], ["none", "none"]]
 
     def parseLine(self, line):
         # features = []
@@ -127,8 +133,11 @@ class Data:
                 print(self.dataPath)
 
             print("Corpus downloaded")
-            self.parseCorpus(self.dataPath, self.trainFiles, self.trainName)
-            self.parseCorpus(self.dataPath, self.testFiles, self.testName)
+            self.filePaths = ["A0"]
+            self.trainFiles, self.testFiles = self.getFiles(self.dataPath, self.filePaths)
+
+            self.parseCorpus(self.dataPath, self.trainFiles, self.filePaths, self.trainName)
+            self.parseCorpus(self.dataPath, self.testFiles, self.filePaths, self.testName)
 
 
 
