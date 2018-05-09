@@ -1,16 +1,14 @@
 import os
 import time
+import sys
 import re
 import sqlite3
 
-# username extraction (for flexibility)
-currentUser = os.environ.get('USERNAME')
+# planned corpus location
+corpusPath = os.path.dirname(sys.argv[0])
 
 # corpus document location
-docPath = 'C:\\Users\\%s\\PycharmProjects\\artificial intelligence\\BNC\\download\\Texts' % currentUser
-
-# planned corpus location
-corpusPath = 'C:\\Users\\%s\\PycharmProjects\\artificial intelligence' % currentUser
+docPath = os.path.join(corpusPath, '\\BNC\\download\\Texts')
 
 # data dictionaries/arrays
 wordPOSCounts = {}
@@ -36,7 +34,11 @@ def reformatArr(array, dictionary):
 
 
 def viterbi():
-    global pathCellArray; global maxFuncArg; global cellProbArray; global pathProbArray; global finalCellProb
+    global pathCellArray
+    global maxFuncArg
+    global cellProbArray
+    global pathProbArray
+    global finalCellProb
     matchNotFound = True
     for x in range(len(sentTagRange)):
         for y in range(len(sentTagRange[x])):
@@ -84,7 +86,8 @@ def viterbi():
                 maxFuncArg = []
             prevCellProbArr = cellProbArray
             finalCellProb.append(cellProbArray)
-            cellProbArray = []; pathProbArray = []
+            cellProbArray = []
+            pathProbArray = []
 
 
 if __name__ == '__main__':

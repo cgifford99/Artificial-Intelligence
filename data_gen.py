@@ -7,14 +7,11 @@ import zipfile
 import shutil
 import time
 
-# username extraction (for flexibility)
-currentUser = os.environ.get('USERNAME')
+# planned corpus location
+corpusPath = os.path.dirname(sys.argv[0])
 
 # corpus document location
-docPath = 'C:\\Users\\%s\\Documents\\artificial intelligence\\BNC\\download\\Texts' % currentUser
-
-# planned corpus location
-corpusPath = 'C:\\Users\\%s\\Documents\\artificial intelligence' % currentUser
+docPath = os.path.join(corpusPath, '\\BNC\\download\\Texts')
 
 # data dictionaries/arrays
 wordPOSCounts = {}
