@@ -4,14 +4,16 @@ import sys
 import os
 import urllib.request
 import zipfile
-import shutil
 import time
+
+# TBH This program actually works very well. Good job - CG 2/11/19
 
 # planned corpus location
 corpusPath = os.path.dirname(sys.argv[0])
+print(corpusPath)
 
 # corpus document location
-docPath = os.path.join(corpusPath, '\\BNC\\download\\Texts')
+docPath = os.path.join(corpusPath, 'BNC/download/Texts')
 
 # data dictionaries/arrays
 wordPOSCounts = {}
@@ -66,30 +68,47 @@ def insertDB():
 # downloads and unzips corpus if needed
 def importCorpus():
     # download corpus and set for training
-    if not os.path.exists(corpusPath + "\\BNC.zip"):
-        print("Downloading corpus...")
-        with urllib.request.urlopen('http://ota.ox.ac.uk/text/2554.zip') as response, open("BNC.zip",
-                                                                                           "wb") as outputFile:
-            shutil.copyfileobj(response, outputFile)
+    if not os.path.exists(corpusPath + "\\BNC.zip") or not os.path.exists(docPath + "\\K\\KS\\KSW.xml"):
+        urllib.request.urlretrieve('http://ota.ox.ac.uk/text/2554.zip', "BNC.zip", reporthook)
     else:
         print("Corpus exists. Will not download.")
     if not os.path.exists(corpusPath + "\\BNC"):
-        print("Extracting corpus...")
+        print("\nExtracting corpus...")
         zipRef = zipfile.ZipFile(corpusPath + "\\BNC.zip", 'r')
+        zipInfo = zipRef.getinfo(zipRef.filename)
+        print(zipInfo)
         zipRef.extractall(corpusPath)
         zipRef.close()
-        os.rename(corpusPath + "\\2554", corpusPath + "\\BNC")  # permission denied issues??
+        os.rename(corpusPath + "\\2554", corpusPath + "\\BNC") # permission denied issues?? 2/11/19 UPDATE: Nah
         print("Done!")
     else:
         print("Corpus previously unzipped. Will not continue.")
 
 
+# Thanks to https://blog.shichao.io/2012/10/04/progress_speed_indicator_for_urlretrieve_in_python.html
+def reporthook(count, blockSize, totalSize):
+    global start_time
+    if count == 0:
+        start_time = time.time()
+        return
+    duration = time.time() - start_time
+    progress_size = int(count * blockSize)
+    speed = int(progress_size / (1024 * duration + 0.000001))
+    percent = min(int(count*blockSize*100/totalSize),100)
+    sys.stdout.write("\r%d%%, %d MB, %d KB/s, %d seconds passed" %
+                    (percent, progress_size / (1024 * 1024), speed, duration))
+    sys.stdout.flush()
+
 def parseCorpus():
+    print(docPath)
     for dirPath, dirNames, fileNames in os.walk(docPath):
-        if not fileNames:
             for fileName in fileNames:
+                sys.stdout.write("\rParsing file %s" % fileName)
+                sys.stdout.flush()
                 with open(os.path.join(dirPath, fileName), encoding="utf-8") as file:
-                    for line in file: parseLine(line)
+                    for line in file:
+                        parseLine(line)
+                    file.close()
 
 # parses individual lines in the current document
 def parseLine(line):
@@ -169,9 +188,9 @@ def genTransitionProb(dictionary, posData):
 
 if __name__ == '__main__':
     start = time.time()
-    print("Setting default directories...")
 
     # if path doesn't exist, create it
+    print("Setting default directories...")
     doesPathExist(corpusPath)
     print("All paths exist!")
 
@@ -191,7 +210,7 @@ if __name__ == '__main__':
         importCorpus()
         parseCorpus()
 
-        print("Generating transition probability matrix...")
+        print("\nGenerating transition probability matrix...")
         genTransitionProb(transitionProb, POSCounts)
         print("Matrix created!")
 
@@ -205,4 +224,4 @@ if __name__ == '__main__':
         print("Data created")
         timeTaken = time.time() - start
         convertedTime = time.strftime("%H:%M:%S", time.gmtime(timeTaken))
-        print("--- Time taken: %f ---" % convertedTime)
+        print("--- Time taken: %s ---" % convertedTime)

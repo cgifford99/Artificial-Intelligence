@@ -4,8 +4,13 @@ import sys
 import re
 import sqlite3
 
+# Alright, this program works flawlessly with 1 sentence that I know of. Otherwise it crashes ;)
+# I am leaving the program to die unfortunately as I have no desire to continue working on it until I learn more about viterbi
+# - CG 2/11/19
+
 # planned corpus location
 corpusPath = os.path.dirname(sys.argv[0])
+print(corpusPath)
 
 # corpus document location
 docPath = os.path.join(corpusPath, '\\BNC\\download\\Texts')
@@ -96,7 +101,7 @@ if __name__ == '__main__':
     global conn
     try:
         conn = sqlite3.connect(corpusPath + "\\pos_training.db")
-    except Error as e:
+    except sqlite3.Error as e:
         print(e)
     finally:
         cur = conn.cursor()
@@ -113,6 +118,7 @@ if __name__ == '__main__':
 
     print("Calculating parts-of-speech....")
     for index in range(len(words)):
+        words[index] = words[index].lower()
         for emissionKey in emisProb:
             formWord = "(%s)" % words[index]
             if formWord in emissionKey:

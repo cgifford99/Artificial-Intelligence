@@ -1,7 +1,9 @@
-text_analysis.py
-2554.xml
-parseData.txt
 BNC/
 BNC.zip
+2554.xml
 pos_training.db
-pos_training.db-journal
+models-master/
+iris_training.csv
+testing.csv
+training.csv
+pos.html

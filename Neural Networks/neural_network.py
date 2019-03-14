@@ -1,10 +1,10 @@
 import numpy as np
 import time
 
-inputX = [1, 2, 3, 4, 5, 6, 7]
-expecOutput = [0.5, 0.6, 0.7, 0.8, 0.9]
-hiddenUnits = [10, 10]
-steps = 5000
+inputX = np.arange(0, 10, 1/64)
+expecOutput = np.arange(0, 1, 1/16)
+hiddenUnits = [64, 32, 24, 16]
+steps = 1000
 learningRate = 1
 
 
@@ -203,6 +203,30 @@ class Network:
 
         return newWeights, newBiases
 
+    def predict(self, x, w, b):
+        return self.forwardProp(x, w, b)
+
+    def evalAccuracy(self, y, expec):
+        netAcc = []
+        for i in range(len(y)):
+            if expec[i] == 0 or y[i] == 0:
+                y[i] += 1
+                expec[i] += 1
+                if y[i] > expec[i]:
+                    nodeAcc = (1 - (y[i] / expec[i])) + 1
+                else:
+                    nodeAcc = y[i] / expec[i]
+                y[i] -= 1
+                expec[i] -= 1
+            else:
+                if y[i] > expec[i]:
+                    nodeAcc = (1 - (y[i] / expec[i])) + 1
+                else:
+                    nodeAcc = y[i] / expec[i]
+            netAcc.append(nodeAcc)
+        acc = np.average(netAcc) * 100
+        return acc
+
 
 class Activation:
     # activation functions used to compute individual nodes
@@ -244,12 +268,22 @@ start = time.time()
 
 for step in range(steps):
     output, weight, bias = myNetwork.train(inputX, weight, bias, expecOutput)
-    if step % 1000 == 1:
+    if step % 100 == 1:
         print("Step", step)
         print("Total Error:", myNetwork.errorSum)
         print("---- Time Taken for Step: %f ----" % (time.time() - start), "\n")
         start = time.time()
 
+accuracy = myNetwork.evalAccuracy(output, expecOutput)
+
+weightNum = 0
+for firstLen in range(len(weight)):
+    for secondLen in range(len(weight[firstLen])):
+        for thirdLen in range(len(weight[firstLen][secondLen])):
+            weightNum += 1
+
+print("Number of Weights: ", weightNum)
 print("Expected output:", expecOutput)
 print("Network output:", output)
+print("Network accuracy: %f%%" % accuracy)
 print("---- Time Taken Overall: %f ----" % (time.time() - totalStart))
