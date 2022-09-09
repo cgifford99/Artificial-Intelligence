@@ -1,227 +1,193 @@
-import sqlite3
-from sqlite3 import Error
-import sys
+import logging
 import os
-import urllib.request
-import zipfile
+import sys
 import time
+import urllib.request
+import xml.etree.ElementTree as etree
+import zipfile
+
+from file_utils import ensure_dir
+from sqlite_db import SQLite3_DB
+from bnc_util import BNC_Utility
 
 # TBH This program actually works very well. Good job - CG 2/11/19
+# But holy shit it's built horrendously :( At least it works - CG 9/7/21
 
-# planned corpus location
-corpusPath = os.path.dirname(sys.argv[0])
-print(corpusPath)
+# TODO: Rebuild database such that words and part of speech are in separate columns
+# TODO: Rebuild parser to user XML parser
+# TODO: Rebuild class/inheritance structure, remove globals where necessary
 
-# corpus document location
-docPath = os.path.join(corpusPath, 'BNC/download/Texts')
+# # planned corpus location
+# corpusPath = os.path.dirname(sys.argv[0])
+# print(corpusPath)
+#
+# # corpus document location
+# docPath = os.path.join(corpusPath, 'BNC/download/Texts')
+#
+# # data dictionaries/arrays
+# wordPOSCounts = {}
+# POSPOSCounts = {}
+# POSCounts = {}
+# transitionProb = {}
+# emissionProb = {}
+#
+# previousPOS = "START"
 
-# data dictionaries/arrays
-wordPOSCounts = {}
-POSPOSCounts = {}
-POSCounts = {}
-transitionProb = {}
-emissionProb = {}
+# what are common operations that I need to do with this data?
+# parsing from the XML files/extracting certain bits of info from the files -> this could be static
+# inserting new words + updating the probabilities
 
-previousPOS = "START"
+# static or non-static:
+# if non-static, methods and variables become bound to the class it is written under and can be harder to untangle
+# if static, methods and variables can diverge from the original purpose and are generally harder to control
+#   under the same principles it was originally written.
+# the question I think is, do you need to use a certain method outside the scope of the class it is written under?
+# or in other words, is there another purpose for that method beyond its parent class?
+# For example, for importCorpus and parseCorpus:
+# * I will likely need them for testing purposes
 
-def doesPathExist(path):
-    if not os.path.exists(path):
-        try:
-            print("Attempting to create path...")
-            os.mkdir(path)
-            print("Path %s created" % path)
-            doesPathExist(docPath)
-        except FileNotFoundError:
-            print("Error: Could not create path")
-            path = os.path.dirname(path)
-            doesPathExist(path)
-
-
-# creating tables within database
-def createDB():
-    # curPOS.execute('''CREATE TABLE if not exists pos_tags(tags, words)''')
-    curPOS.execute('''CREATE TABLE if not exists wordPOSCounts(pos, count)''')
-    curPOS.execute('''CREATE TABLE if not exists POSPOSCounts(pos, count)''')
-    curPOS.execute('''CREATE TABLE if not exists POSCounts(pos, count)''')
-    curPOS.execute('''CREATE TABLE if not exists transitionProb('currentPos, previousPos', probability)''')
-    curPOS.execute('''CREATE TABLE if not exists emissionProb('word, currentPos', probability)''')
-
-
-def insertDB():
-    for key in wordPOSCounts:
-        count = wordPOSCounts[key]
-        curPOS.execute('''INSERT INTO wordPOSCounts VALUES (?, ?)''', (key, count))
-    for key in POSPOSCounts:
-        count = POSPOSCounts[key]
-        curPOS.execute('''INSERT INTO POSPOSCounts VALUES (?, ?)''', (key, count))
-    for key in POSCounts:
-        count = POSCounts[key]
-        curPOS.execute('''INSERT INTO POSCounts VALUES (?, ?)''', (key, count))
-    for key in transitionProb:
-        prob = transitionProb[key]
-        curPOS.execute('''INSERT INTO transitionProb VALUES (?, ?)''', (key, prob))
-    for key in emissionProb:
-        prob = emissionProb[key]
-        curPOS.execute('''INSERT INTO emissionProb VALUES (?, ?)''', (key, prob))
+'''
+This file generates a SQLite3 database containing useful part-of-speech (POS) data from the British National Corpus (BNC).
+This POS data is assembled for use in a Viterbi algorithm calculation to estimate POS tags from any given sentence.
+In particular, two tables will provide the bulk of the information necessary to do this task: transition probabilities
+    and emission probabilities.
+    The transition probability table or more formally, matrix describes the probability of one POS occurring after another.
+        For example, the probability of observing a verb then a noun, P(NN|VB) could be 0.0615=6.15%
+        vs. the probability of observing a verb then a determiner, P(DT|VB) could be 0.2231=22.31%
+    The emission probability table or more formally, matrix describes the probability of a word being a given POS.
+        For example, the probability of the word "back" being a verb is 0.0672% vs "back" being an adverb is 1.0446%
+    NOTE: Values given above do not reflect values directly found by this program as the underlying dataset is subject to change.
+'''
 
 
-# downloads and unzips corpus if needed
-def importCorpus():
-    # download corpus and set for training
-    if not os.path.exists(corpusPath + "\\BNC.zip") or not os.path.exists(docPath + "\\K\\KS\\KSW.xml"):
-        urllib.request.urlretrieve('http://ota.ox.ac.uk/text/2554.zip', "BNC.zip", reporthook)
-    else:
-        print("Corpus exists. Will not download.")
-    if not os.path.exists(corpusPath + "\\BNC"):
-        print("\nExtracting corpus...")
-        zipRef = zipfile.ZipFile(corpusPath + "\\BNC.zip", 'r')
-        zipInfo = zipRef.getinfo(zipRef.filename)
-        print(zipInfo)
-        zipRef.extractall(corpusPath)
-        zipRef.close()
-        os.rename(corpusPath + "\\2554", corpusPath + "\\BNC") # permission denied issues?? 2/11/19 UPDATE: Nah
-        print("Done!")
-    else:
-        print("Corpus previously unzipped. Will not continue.")
+class POS_Data_Generator(BNC_Utility):
+    root_path = os.getcwd()
+    default_db_path = os.path.join(root_path, 'pos_training.db')
+    default_corpus_path = os.path.join(root_path, 'datasets', 'BNC')
+
+    def __init__(self, corpus_path=default_corpus_path, db_path=default_db_path, overwrite=False):
+        super().__init__(corpus_path)
+
+        logging.basicConfig()
+        self.logger = logging.getLogger("pos-data-generator")
+        self.logger.setLevel(logging.DEBUG)
+
+        self.db_path = db_path
+        self.sqlite_db = SQLite3_DB(db_path)
+
+        if overwrite:
+            self.drop_tables()
+
+        self.create_tables()
+
+        # self.document_path = os.path.join(self.document_path, 'A', 'A0')
+
+    def create_tables(self):
+        self.sqlite_db.executeUpdateQuery(
+            '''CREATE TABLE if not exists emissionTotals(
+                        id INTEGER PRIMARY KEY AUTOINCREMENT, word VARCHAR, pos VARCHAR, count INTEGER
+                    )'''
+        )
+        self.sqlite_db.executeUpdateQuery(
+            '''CREATE TABLE if not exists transitionTotals(
+                        id INTEGER PRIMARY KEY AUTOINCREMENT, curr_pos VARCHAR, prev_pos VARCHAR, count INTEGER
+                    )'''
+        )
+        self.sqlite_db.executeUpdateQuery(
+            '''CREATE TABLE if not exists posTotals(
+                        id INTEGER PRIMARY KEY AUTOINCREMENT, pos VARCHAR, count INTEGER
+                    )'''
+        )
+        self.sqlite_db.executeUpdateQuery(
+            '''CREATE TABLE if not exists transitionProb(
+                        id INTEGER PRIMARY KEY AUTOINCREMENT, curr_pos VARCHAR, prev_pos VARCHAR, probability DOUBLE PRECISION
+                    )'''
+        )
+        self.sqlite_db.executeUpdateQuery(
+            '''CREATE TABLE if not exists emissionProb(
+                        id INTEGER PRIMARY KEY AUTOINCREMENT, word VARCHAR, pos VARCHAR, probability DOUBLE PRECISION
+                    )'''
+        )
+
+    def drop_tables(self):
+        self.sqlite_db.executeUpdateQuery('DROP TABLE IF EXISTS emissionTotals')
+        self.sqlite_db.executeUpdateQuery('DROP TABLE IF EXISTS transitionTotals')
+        self.sqlite_db.executeUpdateQuery('DROP TABLE IF EXISTS posTotals')
+        self.sqlite_db.executeUpdateQuery('DROP TABLE IF EXISTS transitionProb')
+        self.sqlite_db.executeUpdateQuery('DROP TABLE IF EXISTS emissionProb')
 
 
-# Thanks to https://blog.shichao.io/2012/10/04/progress_speed_indicator_for_urlretrieve_in_python.html
-def reporthook(count, blockSize, totalSize):
-    global start_time
-    if count == 0:
-        start_time = time.time()
-        return
-    duration = time.time() - start_time
-    progress_size = int(count * blockSize)
-    speed = int(progress_size / (1024 * duration + 0.000001))
-    percent = min(int(count*blockSize*100/totalSize),100)
-    sys.stdout.write("\r%d%%, %d MB, %d KB/s, %d seconds passed" %
-                    (percent, progress_size / (1024 * 1024), speed, duration))
-    sys.stdout.flush()
+def main():
 
-def parseCorpus():
-    print(docPath)
-    for dirPath, dirNames, fileNames in os.walk(docPath):
-            for fileName in fileNames:
-                sys.stdout.write("\rParsing file %s" % fileName)
-                sys.stdout.flush()
-                with open(os.path.join(dirPath, fileName), encoding="utf-8") as file:
-                    for line in file:
-                        parseLine(line)
-                    file.close()
+    # recursion limit too low for some documents within corpus; will return error otherwise
+    # sys.setrecursionlimit(4000)
 
-# parses individual lines in the current document
-def parseLine(line):
-    # use parsing techniques to extract POS tag and word
-    global previousPOS
-    if line.find("<w ") == -1 or line.find("</w>") == -1:
-        if line.find("<c ") != -1 or line.find("<c ") != -1:
-            previousPOS = "START"
-        return
-    else:
-        wordInfo = line[line.find("<w ") + 3:line.find("</w>")]
-        currentPOS = wordInfo[wordInfo.find("c5=") + 4:wordInfo.find(" ") - 1]
-        word = wordInfo[wordInfo.find(">") + 1:]
-        if currentPOS == '' or word == '':
-            if line.find("<w ") != -1:
-                line = line[:line.find("<w ")]
-                parseLine(line)
-            elif line.find("</w>"):
-                line = line[:line.find("</w>")]
-                parseLine(line)
-        else:
-            # curPOS.execute("INSERT INTO pos_tags VALUES (?, ?);", (currentPOS, word))
-            countData(wordPOSCounts, currentPOS, word)
-            countData(POSPOSCounts, currentPOS, previousPOS)
-            countData(POSCounts, currentPOS, "none")
-            if previousPOS == "START":
-                countData(POSCounts, previousPOS, "none")
-            line = line[:line.find("<w ")] + line[line.find("</w>") + 4:]
-            previousPOS = currentPOS
-            parseLine(line)
+    pos_data_generator = POS_Data_Generator(overwrite=True)
+    pos_data_generator.import_corpus()
 
+    emission_totals = {}
+    transition_totals = {}
+    pos_totals = {}
+    for word_list in pos_data_generator.parse_corpus():
+        # run insert query
+        for idx in range(len(word_list)):
+            word, pos = word_list[idx]
+            # force unambiguous tags
+            pos_split = pos.split('-')
 
-def countData(countList, pos, word):
-    if ' ' in word:
-        word = word[:word.find(' ')]
-    word = word.lower()
-    newData = "%s(%s)" % (pos, word)
-    if newData not in countList:
-        count = 1
-        countList[newData] = count
-    else:
-        newCount = countList[newData]
-        newCount += 1
-        countList[newData] = newCount
+            for pos_comp in pos_split:
+                emis_key = (word, pos_comp)
+                if emis_key not in emission_totals.keys():
+                    emission_totals[emis_key] = 0
+                emission_totals[emis_key] += 1
 
+            prev_pos = 'START'
+            if idx != 0:
+                _, prev_pos = word_list[idx - 1]
+            for pos_comp in pos_split:
+                for prev_pos_comp in prev_pos.split('-'):
+                    trans_key = (pos_comp, prev_pos_comp)
+                    if trans_key not in transition_totals.keys():
+                        transition_totals[trans_key] = 0
+                    transition_totals[trans_key] += 1
 
-def genEmissionProb(dictionary, posData):
-    for i in wordPOSCounts:
-        wordPOSCount = wordPOSCounts[i]
-        wordPOSFormatted = (i[:i.find("(")]).upper() + "(none)"
-        for j in posData:
-            if wordPOSFormatted == j:
-                POSResult = posData[j]
-                break
-            else:
-                POSResult = 0
-                continue
-        probResult = wordPOSCount / POSResult
-        dictionary[i] = probResult
+            for pos_comp in pos_split:
+                if pos_comp not in pos_totals.keys():
+                    pos_totals[pos_comp] = 0
+                pos_totals[pos_comp] += 1
 
+    print('')
 
-def genTransitionProb(dictionary, posData):
-    for i in POSPOSCounts:
-        POSPOSCount = POSPOSCounts[i]
-        POSPOSFormatted = (i[i.find("(") + 1:i.find(")")]).upper() + "(none)"
-        for j in posData:
-            if POSPOSFormatted == j:
-                POSResult = posData[j]
-                break
-            else:
-                POSResult = 0
-                continue
-        probResult = POSPOSCount / POSResult
-        dictionary[i] = probResult
+    emission_probs = []
+    for word, pos in emission_totals.keys():
+        if pos not in pos_totals.keys():
+            pos_data_generator.logger.error(f'POS "{pos}" found in emission_totals without corresponding pos_totals key')
+            continue
 
+        pos_total = pos_totals[pos]
+        word_pos_prob = emission_totals[(word, pos)] / pos_total
+        emission_probs.append((word, pos, word_pos_prob))
+
+    transition_probs = []
+    for pos, prev_pos in transition_totals.keys():
+        if pos not in pos_totals.keys():
+            pos_data_generator.logger.error(f'POS "{pos}" found in transition_totals without corresponding pos_totals key')
+            continue
+
+        pos_total = pos_totals[pos]
+        trans_pos_prob = transition_totals[(pos, prev_pos)] / pos_total
+        transition_probs.append((pos, prev_pos, trans_pos_prob))
+
+    pos_data_generator.sqlite_db.executeUpdateManyQuery(
+        'INSERT INTO emissionProb (word, pos, probability) VALUES (?, ?, ?)', emission_probs)
+
+    pos_data_generator.sqlite_db.executeUpdateManyQuery(
+        'INSERT INTO transitionProb (curr_pos, prev_pos, probability) VALUES (?, ?, ?)', transition_probs)
 
 
 if __name__ == '__main__':
     start = time.time()
-
-    # if path doesn't exist, create it
-    print("Setting default directories...")
-    doesPathExist(corpusPath)
-    print("All paths exist!")
-
-    # recursion limit too low for some documents within corpus; will return error otherwise
-    sys.setrecursionlimit(4000)
-
-    print("Creating database...")
-    global connPOS
-    try:
-        connPOS = sqlite3.connect(corpusPath + "\\pos_training.db")
-    except Error as e:
-        print(e)
-    finally:
-        curPOS = connPOS.cursor()
-        createDB()
-        print("Database created successfully!")
-        importCorpus()
-        parseCorpus()
-
-        print("\nGenerating transition probability matrix...")
-        genTransitionProb(transitionProb, POSCounts)
-        print("Matrix created!")
-
-        print("Generating emission probability matrix...")
-        genEmissionProb(emissionProb, POSCounts)
-        print("Matrix created!")
-
-        insertDB()
-        connPOS.commit()
-        connPOS.close()
-        print("Data created")
-        timeTaken = time.time() - start
-        convertedTime = time.strftime("%H:%M:%S", time.gmtime(timeTaken))
-        print("--- Time taken: %s ---" % convertedTime)
+    main()
+    timeTaken = time.time() - start
+    convertedTime = time.strftime("%H:%M:%S", time.gmtime(timeTaken))
+    print("--- Time taken: %s ---" % convertedTime)
